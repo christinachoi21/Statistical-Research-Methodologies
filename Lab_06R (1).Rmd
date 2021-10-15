@@ -1,0 +1,310 @@
+---
+title: "Lab_06R"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 6 Thursday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+The goal of this lab is to code and interpret ridge regression and lasso analyses using the first dataset that you looked at during Tuesday's lab. 
+
+*One thing to keep in mind is that lasso and ridge regression can be applied in a logistic regression context! We don't do this here, and it is important to note, I didn't test logistic ridge regression and lasso for speed. But it is a possibility for those of you with, e.g., categorial response data in your semester project. Just see the documentation for `glmnet()` and note that while the default family is `gaussian`, you can specify `binomial`.*
+
+
+## Data
+
+```{r}
+
+
+rm(list = ls())
+
+```
+
+We'll begin by importing the first dataset from Tuesday:
+```{r}
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/PHOTO_MORPH/photo_morph.Rdata"
+load(url(file.path))
+rm(file.path)
+```
+
+See Tuesday's lab and the README file on GitHub for a description of these data.
+
+Note that $n \gg p$ here, so at the end of the lab we will repeat the analyses after selecting 100 rows randomly from the dataset. When/if you apply lasso regression and/or the lasso to your semester-project dataset, don't do this! Always use all your data. Here, we'll cut data just to build some intuition about what happens when the actual sample size is small.
+
+# Questions
+
+To answer the questions below, it will help you to refer to Sections 6.2 and 6.6 of ISLR; it might also help you to refer to your previous lab work (and, as always, to Google).
+
+## Question 1
+
+Split your data into a training set of size 2,000 and a test set of size 1,419. (Remember: these sets are *disjoint*!) Call your training set variables `pred.train` and `resp.train`, and your test set variables `pred.test` and `resp.test`. (Remember: set the seed!)
+```{r}
+
+set.seed(100)
+
+p=nrow(predictors)
+
+s = sample(p,2000)
+pred.train = predictors[s,]
+resp.train = response[s]
+pred.test = predictors[-s,]
+resp.test = response[-s]
+
+df_train = cbind(pred.train, resp.train)
+df_test = cbind(pred.test, resp.test)
+
+```
+
+## Question 2
+
+First, install the `glmnet` package if you need to. Then use `model.matrix()` as shown on page 251 of ISLR to transform the `pred.train` and `pred.test` data frames to matrices. (Read the explanation around the `model.matrix()` code block to understand why. tl;dr $-$ the coders of `glmnet` did not follow typical `R` conventions.) Run ridge regression on the training data, i.e., run the `glmnet()` function with argument `alpha` = 0. Assume the default range for `lambda`. (Note that `glmnet()` will standardize the data for you by default...you don't have to do it separately.) Show the dimensionality of the output `coef` matrix. How many $\lambda$ values are used by default? (The values are stored in the `lambda` variable within the model-fit output variable.)
+```{r}
+y = response
+
+library(glmnet)
+
+pred.train = model.matrix(resp.train~., df_train)[,-1]
+pred.test = model.matrix(resp.test~., df_test)[,-1]
+
+
+ridge_mod = glmnet(pred.train, resp.train, alpha=0)
+dim(coef(ridge_mod))
+
+ridge_pred = predict(ridge_mod, s = 4, newx = pred.test)
+mean((ridge_pred - resp.test)^2)
+
+
+out = glmnet(predictors, response, alpha=0)
+out
+```
+```
+100 values?
+```
+
+## Question 3
+
+Display the model coefficients for the largest and smallest values of $\lambda$. What differences do you see?
+```{r}
+
+out$lambda[1]
+coef(out)[,100]
+
+
+out$lambda[100]
+coef(out)[,1]
+
+```
+```
+Compared to the largest value of lambda, the smallest value of lambda has coefficient values that are larger.
+
+```
+
+## Question 4
+
+Run `plot()` using the output from your ridge regression fit. Use the argument `xvar="lambda"`, which gives you the most intuitive output. Explain concisely what the plot is showing.
+```{r}
+
+plot(ridge_mod, xvar="lambda")
+
+```
+```
+The plot is showing the log lambda values and the associated coefficient values. It shows the range of values of the coefficients, including if it is zero, associated with each log lambda.
+
+```
+
+## Question 5
+
+Follow the code on page 254 of ISLR and use cross-validation to select the best value of $\lambda$, then use the value of $\lambda$ to compute the test-set MSE. Display the test-set MSE value; below, we'll see if we get a lower value using lasso. (Include the plot of the cross-validation MSE versus $\lambda$.) Is there any evidence that shrinking the coefficients is helpful? (To help answer this question, you could rerun the prediction and test-set MSE steps using `lm()`.)
+
+```{r}
+
+set.seed(100)
+
+cv.out = cv.glmnet(pred.train,resp.train, alpha=0)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+bestlam
+
+ridge.pred=predict(ridge_mod, s=bestlam, newx=pred.test)
+
+mean((ridge.pred - resp.test)^2)
+
+
+```
+```
+MSE: 0.2998286
+
+yes there is evidence that shrinking coefficients is useful because there is a point where the MSE is reduced with a certain number of unshrinked coefficients
+```
+
+## Question 6
+
+Repeat the fitting done in Q2, Q4, and Q5 with the lasso (`glmnet` with `alpha` set to 1). Add to this a computation of `lasso.coef` like what is done on page 255 of ISLR, so that you can see which coefficients are non-zero. Set the same random number seed at you set in Q5 prior to performing cross-validation, so that the same data are placed into the same folds. Do you see any difference here compared to the ridge regression fit?
+```{r}
+library(glmnet)
+
+
+
+pred.train = model.matrix(resp.train~., df_train)[,-1]
+pred.test = model.matrix(resp.test~., df_test)[,-1]
+
+set.seed(100)
+cv.out2= cv.glmnet(pred.train,resp.train, alpha=1)
+plot(cv.out2)
+bestlam2 = cv.out2$lambda.min
+bestlam2
+
+
+lasso_mod = glmnet(pred.train, resp.train, alpha=1)
+
+dim(coef(lasso_mod))
+
+plot(lasso_mod, xvar="lambda")
+
+lasso_pred = predict(lasso_mod, s = bestlam2, newx = pred.test)
+mean((lasso_pred - resp.test)^2)
+
+
+ridge.pred=predict(ridge_mod, s=bestlam, newx=pred.test)
+
+mean((ridge.pred - resp.test)^2)
+
+
+
+
+out2=glmnet(predictors, response, alpha=1)
+lasso.coef2 = predict(out2, type="coefficients", s=bestlam2)
+lasso.coef2
+```
+```
+Yes I do see a difference, the graph of the lambda and MSE is differently shaped and the number of coefficients that are zero are different
+```
+
+---
+
+Now, let's select a subset of the data randomly. Uncomment this block before running it.
+```{r}
+
+set.seed(101)
+nrow(predictors)
+s = sample(nrow(predictors),2000)
+pred.train = predictors[s,]
+resp.train = response[s]
+pred.test = predictors[-s,]
+resp.test = response[-s]
+
+
+
+set.seed(101)
+s.train = sample(nrow(pred.train),35)
+s.test  = sample(nrow(pred.test),15)
+pred.train.small = pred.train[s.train,]
+resp.train.small = resp.train[s.train]
+pred.test.small = pred.test[s.test,]
+resp.test.small = resp.test[s.test]
+
+x.train.small = model.matrix(resp.train.small~.,pred.train.small)[,-1]
+y.train.small = resp.train.small
+x.test.small  = model.matrix(resp.test.small~.,pred.test.small)[,-1]
+y.test.small  = resp.test.small
+
+```
+
+## Question 7
+
+Repeat the ridge regression analysis from above using the small datasets. (Use your code from Q6, with `alpha` set to 0.) Your last step should be to compute an MSE.
+
+```{r}
+
+set.seed(101)
+nrow(predictors)
+s = sample(nrow(predictors),2000)
+pred.train = predictors[s,]
+resp.train = response[s]
+pred.test = predictors[-s,]
+resp.test = response[-s]
+
+
+set.seed(101)
+s.train = sample(nrow(pred.train),35)
+s.test  = sample(nrow(pred.test),15)
+pred.train.small = pred.train[s.train,]
+resp.train.small = resp.train[s.train]
+pred.test.small = pred.test[s.test,]
+resp.test.small = resp.test[s.test]
+
+
+
+x.train.small = model.matrix(resp.train.small~.,pred.train.small)[,-1]
+y.train.small = resp.train.small
+x.test.small  = model.matrix(resp.test.small~.,pred.test.small)[,-1]
+y.test.small  = resp.test.small
+
+out3 = glmnet(x.train.small, y.train.small, alpha=0)
+
+
+set.seed(100)
+cv.out3= cv.glmnet(x.train.small,y.train.small, alpha=0)
+plot(cv.out3)
+bestlam3 = cv.out3$lambda.min
+bestlam3
+
+coef(cv.out3)
+
+
+ridges_pred = predict(out3, s = bestlam3, newx = x.test.small)
+ridge_mse= mean((ridges_pred - y.test.small)^2)
+
+ridge_mse
+```
+
+## Question 8
+
+Repeat the lasso analysis from above using the small datasets. (Use your code from Q6, with `alpha` set to 1.) Do you observe any qualitative difference in the result in the small data limit? Are those coefficients that are shrunk to zero brightness coefficients, or morphological ones? (Or a mix?) Is the result surprising? And which gives the smaller test-set MSE: ridge regression or lasso? Run a full linear regression on these data, and compute the linear regression test-set MSE. How much does the MSE improve when we use lasso and ridge regression as opposed to just straight-up linear regression?
+
+
+```{r}
+out4 = glmnet(x.train.small, y.train.small, alpha=1)
+
+set.seed(100)
+cv.out4= cv.glmnet(x.train.small,y.train.small, alpha=1)
+plot(cv.out4)
+bestlam4 = cv.out4$lambda.min
+bestlam4
+
+coef(cv.out4)
+
+
+las_pred = predict(out4, s = bestlam4, newx = x.test.small)
+las_pred_mse= mean((las_pred - y.test.small)^2)
+
+
+names(predictors)
+
+lm.mod=lm(resp.train~.,data=df_train)
+lm.mod
+
+pred.lm.mod= predict.lm(lm.mod, df_test)
+lm_pred_mse= mean((df_test$response - pred.lm.mod)^2)
+
+ridge_mse
+las_pred_mse
+lm_pred_mse
+
+
+
+```
+```
+The MSE improves significantly when we use either lasso or ridge regression over linear regression. Out of the two lasso and ridge regression, lasso has lower MSE associated with it.
+
+The coefficients that are shrunk to zero are brightness coefficients
+
+There are slight qualitative differencesin the small data limit.
+```

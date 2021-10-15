@@ -1,0 +1,292 @@
+---
+title: "Lab_05T"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 5 Tuesday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+The goal of this lab is to perform, and to interpret the results of, a multiple linear regression analysis.
+
+## Data
+
+We'll begin by importing some data:
+```{r}
+rm(list=ls())
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/DM_GALAXY/Massive_Black_II.Rdata"
+load(url(file.path))
+rm(file.path)
+objects()
+```
+The split of the data into training and test sets was done for us by the client. For background on what these data represent, click <a href="https://github.com/pefreeman/36-290/tree/master/EXAMPLE_DATASETS/DM_GALAXY">here</a> and read the description. In short, the predictor variables are measurements relating to the dark matter haloes in which visible galaxies are embedded, and the response variables are measurements relating to the galaxies. To goal when building a statistical model would be to link the dark matter halo properties to a galaxy property, i.e., to be able to predict galaxy mass given a set of dark matter halo measurements, and/or determine which measurements most inform galaxy mass. 
+
+---
+
+Digression: what is dark matter?
+
+It turns out that when we look at large-scale structures, like gravitationally bound clusters of galaxies, the movements of those galaxies cannot be explained by the amount of light that we see. We basically understand balls of gas (stars) and thus when we see a galaxy of a particular brightness we expect it to have a certain mass. But galaxies and clusters of galaxies are more massive than they appear...about five times more massive. The leading explanation for why there is missing mass is that there is a constituent of the Universe that interacts with "normal," or "baryonic" matter via gravitation, but not via electromagnetism. The force carrier for electromagnetism is the photon: if matter does not interact via electromagnetism, then it must be "dark."
+
+Dark matter is a "parameterization of ignorance." We don't know *what* it is, but we see what it does. This is kind of like gravitation itself between Newton and Einstein: in the 1800s, we could model gravity (we could see what it does and could build physical models based on mathematical laws) but we didn't know *what* gravity was. (The theory for gravity is General Relativity.)
+
+Anyway: dark matter is such that it is easy to simulate the evolution of a Universe containing only dark matter particles. Basically, over time dark matter goes from being very uniformly distributed to clumping in structures dubbed "halos." In the simplest, most intuitive picture, you can envision a galaxy as sitting inside a halo: the halo is like a big sphere, and the galaxy is more like a disk inside the sphere. (Due to its properties, dark matter doesn't collapse to form structures like galaxies...the "light matter" has collapsed more over time, and the dark matter less.) The overall mass of a given halo is a random variable, with the underlying distribution of halo masses being something astronomers would like to accurately and precisely constrain. Problem is...we don't actually observe dark matter, we observe the "light matter," or baryonic matter. So: if we see a galaxy with particular properties (like mass and star-formation rate), can we predict the properties of the dark matter halo in which it is embedded? Or vice-versa?
+
+Digression over...
+
+---
+
+To keep things simple, we'll concentrate on one response variable initially, galaxy stellar mass:
+```{r}
+mass.train = resp.train.df$halos.m_star
+mass.test  = resp.test.df$halos.m_star
+rm(resp.test.df,resp.train.df)
+```
+
+# Questions
+
+To answer the questions below, it will help you to refer to Chapter 3 of ISLR (and especially Section 6); it might also help you to refer to your previous lab work (and, as always, to Google).
+
+## Question 1
+
+The datasets above are *large*. Not too large to fit via multiple linear regression, but too large to effectively plot. Determine how many galaxies are in `pred.train`, set a random number seed, sample some number of indices, and histogram the predictors and the mass variable. Assess whether or not you should transform the mass variable in any way. For now, in this question, **you do not need to make any transformation...just note whether you think a transformation might be needed, and propose one**. (If so, look at the variable transformations text mentioned in the notes to propose possible transformations. Specifically, hone in on what John Tukey called the "ladder of transformations.") Also look at the predictor variables...while it is not explicitly required that one transform them to have a normal distribution (or any distribution for that matter), sometimes transformation can improve fits. Use facet wrapping for the predictors, and pass the argument `scales="free"` to `facet_wrap()` to allow the x-limits for each histogram to be different.
+
+```{r}
+
+library(tidyverse)
+set.seed(103)
+
+df = data.frame(x= pred.train, y= mass.train)
+sample = gather(sample(df, 100, replace=TRUE))
+#sample = sample(1:nrow(pred.train),100, replace=TRUE)
+
+ggplot(data=sample,mapping=aes(x=value),facet_wrap(scales='free')) + geom_histogram(bins=25) 
+
+ggplot(data=data.frame(mass.train),mapping=aes(x=mass.train)) + geom_histogram(bins=30)
+
+```
+```
+A transformation might be needed because the response variable is assumed to be distributed normally when we go to run linear regression. Possible transformations: log transform, square root (more moderate of a transformation compared to log, could be used if log overcorrects), negative reciprocal (stronger transformation,keeps the order of numbers the same, might be used if log undercorrects data). I would maybe suggest the use of maybe a square root or log transformation to correct the upward straggle.
+
+
+"ladder of transformations":
+
+
+stronger:  -1/x^2
+
+mild:  -1/x
+
+(corrects upward straggle)
+
+no shape change: x
+
+(corrects downward straggle)
+
+mild: x^2, x^3
+
+stronger: antilog x
+```
+
+## Question 2
+
+If you stated in Q1 that a transformation would be helpful, apply it here and show the histogram. Did it help make the response variable more normal? (Make a new variable with the transformed response...do not permanently change the original response.) If you didn't think a transformation would be helpful, just plot the response as you did in Q1.
+```{r}
+
+set.seed(103)
+
+library(tidyverse)
+
+l.mass.train = log(mass.train)
+
+df = data.frame(x= pred.train, y= l.mass.train)
+
+neg= -1/(mass.train)
+neg_square = -1/(mass.train)^2
+square =(mass.train)^2
+
+sample = gather(sample(df, 100, replace=TRUE))
+
+
+ggplot(data=sample,mapping=aes(x=value),facet_wrap(scales='free')) + geom_histogram(bins=30)
+
+ggplot(data=data.frame(neg_square),mapping=aes(x=neg_square)) + geom_histogram(bins=30)
+
+
+
+```
+```
+It didn't really help too much, the shape of it is still not close to normal.
+```
+
+---
+
+Before moving on to performing linear regression, you should learn a bit about model syntax. Here we show this syntax within the context of a simple analysis:
+```
+> lm.out = lm(mass.train~.,data=pred.train)
+> summary(lm.out)
+> mass.test.pred = predict(lm.out,newdata=pred.test)
+```
+
+Let's break this down. 
+
+First, we call `lm()`, which stands for "linear model." For our model, we decide to regress the mass variable `mass.train` onto all the predictor variables (represented by the "."). (Note: that's a tilde before the period, not a minus sign! See below for what we would do if we don't want to include all the predictor variables when learning the model.) `R` doesn't know where these predictor variable are, so we specify that via the `data=` argument. We save the output as `lm.out`.
+
+Second, we call the `summary()` function. `summary()` is a general function whose behavior depends on the class of object passed to it. If the object is a data frame, you get a numerical summary. (Try it with `pred.train`!) If the object is of class `lm`, then you get entirely different output. (Basically, you can think of it as `summary()` checking for the class, then calling another function depending on what the class is. Here, `summary()` invisibly redirects `lm.out` to `summary.lm()`.) The `summary()` function provides the $p$-values for the individual coefficients and for the $F$ statistic, plus the adjusted $R^2$, etc.
+
+Third, we use the model embedded within `lm.out` to generate predictions for the mass for new data (the test data). `predict()` behaves like `summary()`; here, it redirects the arguments to `predict.lm()`.
+
+Now, about the model syntax. For simplicity, assume that we have a predictor data frame `p`, with columns `a`, `b`, and `c`, and a response vector `r`.
+
+- To include `a` only: `lm(r~a,data=p)`
+- To include `a` and `c` only: `lm(r~a+c,data=p)` or `lm(r~.-b,data=p)`
+- To regress through the origin: `lm(r~.-1,data=p)`
+- To include `a`, `b`, and their interaction: `lm(r~a+b+a:b,data=p)`
+
+There's more, but life is short and so's this course!
+
+---
+
+## Question 3
+
+Perform a multiple linear regression analysis. Use the `summary()` function to examine the output. Do you conclude that the linear model is informative or uninformative? (Also look at the $p$-values for the individual coefficients and for the $F$ statistic...are these particularly informative here?)
+```{r}
+lm.out = lm(mass.train~.,data=pred.train)
+summary(lm.out)
+mass.test.pred = predict(lm.out,newdata=pred.test)
+
+
+
+```
+```
+I conclude that the linear model is informative. The p values for the coefficients are all less  than the .05 threshold except for phiTid. Also the F statistic has a significant p value of less than 2.2e-16.
+```
+
+## Question 4
+
+Plot the residuals (observed minus predicted masses) versus the predicted mass, for the test data. What trends do you see? (Be sure to only plot a subset!) (Just note any trends...do not necessarily try to do anything about them.)
+
+```{r}
+
+
+model = lm(mass.test~.,data=pred.test)
+summary(model)
+  
+plot(predict(model), residuals(model))
+abline(0, 0)
+
+
+
+
+
+```
+```
+There is kind of a more broader spread of points near the left and then they narrow in towards the right.
+```
+
+## Question 5
+
+Load the `car` library (install it if necessary!) and use the `vif()` function to check for possible (multi)collinearity. If present, remove a variable and redo the fit. Rinse, lather, and repeat until the `vif()` outputs are all less than 5. Do the results change markedly from those in Q3? (Make a mental note that before you interpret your $R^2$ value in a linear model fit, you need to check for multicollinearity first, since the latter can increase the value of the former. How does the $R^2$ look after you are done here?)
+```{r}
+library(car)
+vif(lm.out)
+
+
+removed.lm.out = lm(mass.train~halos.rcirc+halos.vcirc+r_parent+shapesDM.q3d+shapesDM.s3d+thetaTid+phiTid,data=pred.train)
+
+
+
+
+summary(removed.lm.out)
+
+vif(removed.lm.out)
+
+
+THRESHOLD = 5
+pred.vif = pred.train
+istop = 0
+while ( istop == 0 ) {  
+  lm.out = lm(mass.train~.,data=pred.vif)  
+  v = vif(lm.out)
+  if ( max(v) > THRESHOLD ) {    
+    pred.vif = pred.vif[,-which.max(v)]
+    } else {    
+      istop = 1  
+      }
+  }
+print(v)
+pred.vif
+
+```
+```
+The R squared value is slightly lower compared to before the variables were removed.
+```
+
+## Question 6
+
+Create two diagnostic plots wherein you show the predicted mass versus the observed mass, and compute the test MSEs, for analyses with the full set of predictor variables and for the vif-reduced set of predictor variables. For the plot, make sure to make the limits the same for the $x$ and $y$ axes both, and make sure to draw a diagonal line. Make a mental note of how mitigating multicollinearity affected predictive ability in this particular instance.
+
+
+```{r}
+ 
+
+predict.mass.test = predict(lm.out, newdata=pred.test)
+
+
+removed.lm.out = lm(mass.train~halos.rcirc+halos.vcirc+r_parent+shapesDM.q3d+shapesDM.s3d+thetaTid+phiTid,data=pred.train)
+
+predict.mass.test.remove = predict(removed.lm.out, newdata=pred.test)
+
+
+ggplot(pred.test, aes(x=predict.mass.test, y=mass.test)) + geom_point() + geom_abline(intercept=0, slope=1) + labs(x= 'predicted values', y= 'actual values')
+
+ggplot(pred.test, aes(x=predict.mass.test.remove, y=mass.test)) + geom_point() + geom_abline(intercept=0, slope=1) + labs(x= 'predicted values', y= 'actual values')
+
+
+model = lm(mass.test~.,data=pred.test)
+
+plot(model)
+
+
+
+sum.removed.lm.out= summary(removed.lm.out)
+sum.lm.out= summary(lm.out)
+
+
+mse1 = mean(sum.lm.out$residuals^2)
+mse1
+
+mse2 = mean(sum.removed.lm.out$residuals^2)
+mse2
+```
+
+'''
+
+
+plot(predict(model),                               
+     pred.test$mass.test,
+     xlab = "Predicted Values",
+     ylab = "Observed Values")
+abline(a = 0,                                        
+       b = 1,
+      col = "red",
+       lwd = 2)
+
+
+
+#ggplot(data=pred.test,mapping=aes(x=predict(mass.test)) + geom_point()
+
+#ggplot(data=pred.test,mapping=aes(x=mass.test)+ geom_point()
+
+
+'''
+
+
+
+
+
+

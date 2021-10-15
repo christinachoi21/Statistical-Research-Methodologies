@@ -1,0 +1,110 @@
+---
+title: "Stat 202, Spring 2021, Lab 12"
+author:
+- Christina Choi  
+- gawonc
+- Collaborators [list any collaborators here]
+date: "not due / nothing submitted"
+output:
+  html_document:
+    code_folding: show
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, echo=FALSE}
+###########################
+# STYLE EDITS: IGNORE THIS
+###########################
+
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+knitr::opts_chunk$set(echo = TRUE) # set echo=FALSE to hide code from html output
+```
+
+
+```{r}
+
+library("knitr")
+library("rmarkdown")
+library("dplyr")
+library("readr")
+
+```
+
+
+# Question 1:  "Lab 12 instructions"
+
+Before looking at this file, you need to read the "lab 12 instructions" posted on Canvas.  
+
+In particular, note that **your shimmer accounts will be removed soon after the end of the semester** (to free up server space).  The posted lab 12 instructions explain how to save your documents from shimmer, and get you started on stand-alone R Studio.
+
+This markdown file is intended as practice for you to run in stand-alone R Studio.
+
+
+
+# Question 2:  Not due / nothing submitted
+
+This file is only provided as practice for those students who want to try running a markdown file in stand-alone R Studio.
+
+Lab 12 is not graded, and there is nothing to submit.
+
+
+
+# Question 3:  Loading Packages
+
+The posted "lab 12 instructions" explain how to download R and R Studio on your own machine.
+
+If you have downloaded R and R Studio for the first time, there will be no packages loaded.  When you attempt to execute a code chunk, R Studio will alert you that required packages need to be installed; you should install them as indicated.  *NOTE*:  Often, when packages need to be installed, you will get an alert that associated packages also need to be installed; you should install them as indicated.  Installing packages for the first time may take a while depending on your connection and bandwidth.
+
+
+
+# Question 4: Loading Data
+
+There are a variety of ways to load data in R.  One simple way is to call an online data file.  Run the following chunk to load the data file from lab 9:
+*Note:*  If you are running this in newly-installed stand-alone R Studio for the first time, you will get alerts about required packages; you should click to install whatever packages and associated packages are indicated.
+
+
+```{r warning = FALSE, comment = FALSE}
+
+heart_disease <- readr::read_csv("http://stat.cmu.edu/~gordonw/heart_disease.csv")
+
+```
+
+
+
+# Question 5:  Excecuting an operation
+
+Once you have successfully loaded the dataset from the chunk above, execute the following to produce a histogram of the cholesterol (`chol`) values:
+
+```{r}
+
+hist(heart_disease$chol,
+     xlab="cholesterol",
+     ylab="frequency",
+     main="cholesterol of 303 patients")
+
+```
+
+
+# Question 5:  Knitting to HTML
+
+After successfully executing the previous chunks, knit the file to html (select knit->Knit to HTML)
+
+
+Congratulations!  You have successfully gotten started with your own R Studio.
+
+
+
+**Lab 12 is not graded, and there is nothing to submit.**
+
+
+****
+
+[end of lab 12]
+
+
+

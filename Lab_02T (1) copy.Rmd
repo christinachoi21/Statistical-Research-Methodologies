@@ -1,0 +1,273 @@
+---
+title: "Lab_02T"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 2 Tuesday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+## Data
+
+We'll begin by importing some data from the 36-290 GitHub site. These data are stored in .Rdata format (which is equivalent to .rda, if you've seen that file extension); such data are saved via `R`'s `save()` function and loaded via `R`'s `load()` function. One wrinkle here: the data are stored on the web, so we also have to apply the `url()` function.
+```{r}
+rm(list=ls())   # This is generally good practice: remove all current variables from the global environment.
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/BUZZARD/Buzzard_DC1.Rdata"
+load(url(file.path))
+rm(file.path)
+set.seed(101)
+s = sample(nrow(df),4000)
+predictors = df[s,-c(7:14)]
+response   = as.vector(df[s,14])
+rm(df,s)
+objects()       # Shows the loaded variables. (Redundant with the Environment pane.)
+
+
+```
+
+If everything loaded correctly, you should see two variables in your global environment: `predictors` and `response`. `predictors` is a data frame with 4000 rows and 6 columns, and `response` is a vector of length 4000, and it represents *redshift*, which you can think of as a directly observable proxy for the distance of a galaxy from the Earth. (After all, tape measures aren't going to help us here.) See the description of redshift in `Lab_01R` if you need to remind yourself what redshift is exactly.
+
+# Questions
+
+## Question 1
+
+Apply the `dim()`, `nrow()`, `ncol()`, and `length()` functions to `predictors`, so as to build intuition about what these functions output. (Note: we are not using `dplyr` yet, just base `R` functions here.) Do you know why `length()` returns the value it does? Ask me or the TA if you do not. (But fill in an answer below regardless to reinforce the answer.)
+```{r}
+dim(predictors)
+
+nrow(predictors)
+
+ncol(predictors)
+
+length(predictors)
+
+
+```
+```
+the length() returns 6 because there are 6 variables
+
+```
+
+## Question 2
+
+Display the names of each column of `predictors`.
+```{r}
+
+names(predictors)
+
+```
+
+---
+
+Time for a digression.
+
+A *magnitude* is a logarithmic measure of brightness that is calibrated such as to be approximately zero for the brightest stars in the night sky (Sirius, Vega, etc.). Every five-unit *increase* in magnitude is a factor of 100 *decrease* in brightness. So a magnitude of 20 means the object is 100 million times fainter than a star like Vega.
+
+Magnitudes are generally measured in particular bands. Imagine that you put a filter in front of a telescope that only lets photons of certain wavelengths pass through. You can then assess the brightness of an object at just those wavelengths. So `u` represents a magnitude determined at ultraviolet wavelengths, with `g`, `r`, and `i` representing green, red, and infrared. (The `z` and `y` are a bit further into the infrared. The names don't represent words.)
+
+So the predictor data consists of six magnitudes spanning from the near-UV to the near-IR.
+
+---
+
+## Question 3
+
+Use the base `R` `summary()` function to get a textual summary of the predictors. Do you notice anything strange?
+```{r}
+
+summary(predictors)
+
+
+```
+```
+
+It appears that the values for min/Q1/median/mean/3Q of all the variables are fairly close in value but the only exception to that would be the max values under variables r and i are vastly different from the others (29.41 and 27 compared to 99).
+
+```
+
+## dplyr
+
+Below, we will practice using `dplyr` package functions to select rows and/or columns of a data frame. `dplyr` is part of the `tidyverse`, and is rapidly becoming the most oft-used way of transforming data. To learn more about "transformatory" functions, read through today's class notes, then through Chapter 5 of the online version of *R for Data Science* (see the syllabus for the link, or just Google for it). In short, you can
+
+| action | function |
+| ------ | -------- |
+| pick features by name | `select()` |
+| pick observations by value | `filter()` |
+| pick observations by category | `group_by()` |
+| create new features | `mutate()` |
+| reorder rows | `arrange()` |
+| collapse rows to summaries | `summarize()` |
+
+A cool thing about `dplyr` is that you can use a piping operator (%&gt;%) to have the output of one function be the input to the next. And you don't have to have only `dplyr` functions within the flow; for instance, you could pipe the first two rows your data frame to head:
+```{r}
+suppressMessages(library(tidyverse))
+head(predictors[,1:2])                         # base R
+predictors %>% select(.,u,g) %>% head(.)       # dplyr 
+```
+
+Let's do a few exercises here. Be sure to tap into, e.g., StackOverflow and *R for Data Science* for any help you may need.
+
+## Question 4
+
+Grab all data for which `i` is less than 25 and `g` is greater than 22, and output in order of increasing `y`. (Remember: you combine conditions with &amp; for "and" and | for "or".) Show only the first six lines of output. Note that `head()` by default shows the first six rows of the input data frame.
+```{r}
+
+predictors %>% arrange(.,y) %>% filter(.,(i<25 & g>22)) %>% head() 
+
+
+
+```
+
+## Question 5
+
+To get a quick, textual idea of how the data are distributed: select the `g` column, apply the `round()` function, then pipe the output to `table()`. Do you notice anything strange? (It would be related to what you should have seen above.)
+```{r}
+
+
+
+predictors %>% select(., g) %>% round(.,) %>% table(.)
+
+
+```
+```
+I notice that most of the values are gathered towards the 26 or 27 values. 
+
+
+```
+
+---
+
+Time for another digression. Domain scientists are not bound by the `R` convention of using `NA` when data are "not available." Sometimes the domain scientists will tell you what they use in place of `NA`, sometimes not. In those latter cases, one can usual infer the values. Astronomers for some reason love using -99, -9, 99, etc., to represent missing values. The 99 seen in the `r` column represents a missing value.
+
+---
+
+## Question 6
+
+Use `filter()` to determine how many rows contain 99's. While more "elegant" solutions may exist, here you should combine logical operators.
+```{r}
+
+
+filter(predictors, u == 99 | g == 99 | r == 99 |i == 99 | z == 99 | y == 99)
+
+```
+
+## Question 7
+
+Now repeat Q6 (in a sense), and remove all the rows that contain 99's, saving the new data frame as `pred.new`.
+```{r}
+
+pred.new <- filter(predictors, u != 99 | g != 99 | r != 99 |i != 99 | z != 99 | y != 99)
+
+pred.new
+```
+
+## Question 8
+
+Hold up...wait a minute...you just filtered the predictors data frame without filtering the response vector. So here you can perhaps do one of two things. First, you could repeat Q7, but use `cbind()` to bind the predictors and response together into one data frame (call it `df`), redo the filter, save the output (`df.new`), then extract `pred.new` as the first 6 columns of `df.new` and `resp.new` as the 7th column. Alternatively, you could use base R functionality to determine which (hint: `which()`) rows to keep or exclude using the logical operators in either Q6 or Q7, then apply the output to `response` directly to define `resp.new`. (I'm sure other solutions exist as well.)
+
+Call me or the TA over (or come to office hours) if you need help with this.
+```{r}
+
+
+df <- cbind(predictors, response)
+
+df.new <- filter(df, u != 99 & g != 99 & r != 99 & i != 99 & z != 99 & y != 99)
+
+pred.new <- select(df.new, u, g, r, i, z, y)
+
+
+resp.new <- select(df.new, response)
+
+resp.new
+
+```
+
+---
+
+The data we are working with have no factor variables, so I'm going to create one. (Uncomment the lines below, then run them. To uncomment all lines at once, try highlighting all of them, then under the `Code` pull-down menu, click on `Comment/Uncomment Lines`...or utilize the displayed keyboard shortcut.)
+```{r}
+type = rep("FAINT",nrow(pred.new))
+w = which(pred.new$i<25)
+type[w] = "BRIGHT"
+type = factor(type)
+unique(type)
+pred.new = cbind(type,pred.new)
+
+
+```
+So I defined my factor variable using character strings, and then coerced the vector of strings into a factor variable with two levels. Note that by default, the levels order themselves into alphabetical order. You can override that default behavior if there is actually a natural ordering to your factor variables. See the documentation for `factor()` to see how to do that.
+
+## Question 9
+
+Use `group_by()` and `summarize()` to determine the numbers of `BRIGHT` and `FAINT` galaxies. (However, look up the `tally()` function for future reference.)
+```{r}
+
+pred.new %>% group_by(.,type) %>% summarize(.,Number=n())
+
+```
+
+## Question 10
+
+Repeat Q9, but show the median value of the `u` magnitude instead of the numbers in each factor group.
+```{r}
+
+pred.new %>% group_by(.,) %>% summarize(.,Median=median(u))
+
+
+
+```
+
+---
+
+Time for yet another digression.
+
+Magnitudes of galaxies at particular wavelengths are heavily influenced by two factors: physics (what is going on with the gas, dust, and stars within the galaxy itself), and distance (the further away a galaxy is, the less bright it tends to be, so the magnitude generally goes up). To attempt to mitigate (somewhat, not necessarily completely) the effect of distance, astronomers often use *colors*, which are differences in magnitude for two adjacent filters.
+
+---
+
+## Question 11
+
+Use `mutate()` to define two new columns for `pred.new`: `gr`, which would be the `g` magnitude minus the `r` magnitude, and `ri`, for `r` and `i`. Save your result.
+```{r}
+
+
+pred.new.column <- pred.new %>% mutate(.,gr = g - r, ri = r - i)
+
+pred.new.column
+```
+
+## Question 12
+
+Are the mean and median values of `g-r` and `r-i` roughly the same for `BRIGHT` galaxies versus `FAINT` ones? Heck if I know. Use `dplyr` functions to attempt to answer this question.
+```{r}
+
+
+
+pred.new.column %>% group_by(.,type) %>% summarize(.,Median=median(gr), Mean=mean(gr))
+
+pred.new.column %>% group_by(.,type) %>% summarize(.,Median=median(ri), Mean=mean(ri))
+
+
+```
+
+## Question 13
+
+Actually, we cannot really answer the question posed in Q12 without some notion of uncertainty. So here, repeat Q12, but instead of displaying the mean and median for each group, display the standard error of the mean: the sample standard deviation divided by the square root of the number of values.
+```{r}
+
+stderror <- function(x) sd(x)/sqrt(length(x))
+
+
+pred.new.column %>% group_by(.,type) %>% summarize(.,Standard_error=stderror(gr) )
+
+pred.new.column %>% group_by(.,type) %>% summarize(.,Standard_error=stderror(ri) )
+
+
+
+```
+The standard errors you observe should be $\sim$0.01. While we won't run, e.g., a two-sample t-test here, it is pretty clear that the means of the colors are significantly different between groups.
+
+---
+
+Next time: visualization with `ggplot`!

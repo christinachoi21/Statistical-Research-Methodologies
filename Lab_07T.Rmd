@@ -1,0 +1,229 @@
+---
+title: "Lab_07T"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 7 Tuesday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+Today you will apply regression and classification trees to two different astronomical datasets.
+
+# Questions
+
+## Data, Part I
+
+```{r}
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/DM_GALAXY/Massive_Black_II.Rdata"
+load(url(file.path))
+rm(file.path)
+```
+
+You have looked at these data before. The nine predictor variables are measurements relating to simulated dark matter haloes in which galaxies are embedded, and the three response variables are measurements relating to the galaxies themselves. The basic idea is to be able predict galaxy properties given the properties of its parent halo. (This ultimately allows astronomers to run less computationally intensive dark-matter-only simulations$-$simulations with no actual visible matter in them, and thus no galaxies$-$and be able to create galaxy catalogs from them, using a previously determined statistical model.)
+
+Previously you determined that there was a strong linear relationship between the predictors and galaxy mass. Today, we will concentrate on a response variable for which we expect a somewhat weaker linear relationship: galaxy star-formation rate (SFR). We note that the linear relationship is stronger if we look at the logarithm of SFR rather than SFR itself...but we also note that some of the SFR values are zero. Today, we'll err towards simplicity: to cut down on the sizes of the datasets, we will only keep those data for which SFR > 0.
+
+
+```{r}
+rm(list = ls())
+
+
+```
+
+```{r}
+
+resp.train = resp.train.df$prop.sfr
+w = which(resp.train>0)
+pred.train = pred.train[w,]
+resp.train = log10(resp.train[w])
+
+resp.test  = resp.test.df$prop.sfr
+w = which(resp.test>0)
+pred.test = pred.test[w,]
+resp.test = log10(resp.test[w])
+
+cat("Sample sizes: train = ",length(resp.train)," test = ",length(resp.test),"\n")
+
+```
+
+## Question 1
+
+Determine the test-set MSE for a linear regression fit. (There is no need to do subset selection here, if for no other reason than we want to simply see if a regression tree improves the test-set MSE rather than to do statistical inference.) Also display the predicted response versus observed response diagnostic plot (with the same limits on each axis!), after sub-sampling the test data.
+
+
+```{r}
+library(ggplot2)
+model = lm(resp.train~.,data=pred.train)
+model
+
+resp.pred.lm = predict(model,newdata=pred.test)
+resp.pred.lm
+
+test_MSE = mean((resp.test - resp.pred.lm) ^ 2)
+test_MSE
+
+train_MSE = mean(model$residuals^2)
+train_MSE
+
+
+set.seed(100)
+
+respdf= data.frame(resp.test)
+spred = sample(nrow(pred.test),round(.7*nrow(pred.test)))
+srep = sample(nrow(respdf),round(.7*nrow(respdf)))
+
+samp.pred.train = pred.test[spred, ]
+samp.pred.test = pred.test[-spred, ]
+
+samp.resp.train = respdf[srep, ]
+samp.resp.test = respdf[-srep, ]
+
+model.s = lm(samp.resp.train~.,data=samp.pred.train)
+model.s
+
+samp.resp.pred.lm = predict(model.s,newdata=samp.pred.test)
+
+plot(samp.resp.pred.lm, samp.pred.test$samp.resp.train,
+     xlab="predicted value", ylab="observed value")
+abline(a=0, b=1)
+
+plot(fitted(model), xlab="predicted value", ylab="observed value")
+```
+
+## Question 2
+
+Repeat Q1, but utilize a regression tree. While you can look at pages 327-328 of ISLR, we actually do not want to use the `tree` package, but rather the `rpart` package. (You should install `rpart`.) The calls made to `rpart` functions are similar to those made to `tree` functions. Do not attempt to prune the tree at this juncture. What do you observe? (What does the diagnostic plot look like? How many leaves are there for the tree? Is the test-set MSE smaller?) Would you adopt the tree or the linear regression model?
+```{r}
+library(rpart)
+
+set.seed (100)
+df_train = data.frame(pred.train, resp.train)
+
+train = sample(1:nrow(df_train), nrow(df_train)/2)
+
+tree.train=rpart(resp.test~., df_train ,subset=train)
+summary(tree.boston)
+
+
+
+dftrain= data.frame(pred.train, resp.train)
+dftest= data.frame(pred.test, resp.test)
+
+rpart.out = rpart(resp.train~.,data=dftrain, method="anova")
+rpart.out
+
+summary(rpart.out)
+printcp(rpart.out)
+
+
+
+
+
+tree.pred= predict(rpart.out,newdata=dftest,type="prob")[,2]
+table(tree.pred ,High.test)
+
+
+tree.pred=predict(rpart.out,Carseats.test,type="class")
+table(tree.pred ,High.test)
+
+
+tree.SFR =tree(High∼.,Carseats )
+summary(tree.carseats)
+
+plot(tree.carseats )
+text(tree.carseats ,pretty =0)
+
+
+
+```
+```
+FILL ME IN
+```
+
+## Question 3
+
+Visualize the tree. Install the package `rpart.plot` and run its namesake function while inputting the results of your tree fit. Do some inference: what are the important predictor variables? Read the tree: what region of predictor space leads to the smallest log(SFR)'s? The largest log(SFR)'s? (Note: if the condition at a split is fulfilled, you move *to the left*. Otherwise you move to the right.)
+```{r}
+# FILL ME IN
+
+library(rpart.plot)
+rpart.plot()
+
+```
+```
+FILL ME IN
+```
+
+## Question 4
+
+Use the `printcp()` function to determine if there is any evidence that pruning your tree is necessary. A good ground rule is to look at the `xerror` column of the output. Take the last value, and add to it the associated last value of `xstd`, the uncertainty in `xerror`. If this sum is *larger* than any of the other values of `xerror`, then pruning is neccessary. Actually, a made-up example might help here:
+```
+> printcp(rp.out)
+        CP nsplit rel error  xerror      xstd
+1 0.700000      0   1.00000 1.10000 0.1000000
+2 0.100000      1   0.50000 0.55000 0.0500000
+3 0.090000      2   0.49000 0.53900 0.0400000
+```
+The last value of `xerror` is 0.539. The sum of that value and its associated uncertainty is 0.539 + 0.04 = 0.579. 0.579 is larger than 0.55, the value of `xerror` in row 2, but not larger than 1.1, the value of `xerror` in row 1. So we would decide that it would make sense to prune the tree back to one split, but not to zero splits.
+
+When you run `printcp()`, also run `plotcp()`. If it appears that no pruning is to be done, comment on why that may be the case.
+```{r}
+# FILL ME IN
+```
+```
+FILL ME IN
+```
+
+---
+
+Now we turn our attention to classification trees.
+
+## Data, Part II
+
+We will now load a new dataset:
+```{r}
+rm(list=ls())
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/TD_CLASS/css_data.Rdata"
+load(url(file.path))
+rm(file.path)
+objects()
+```
+
+If everything loads correctly, you will see that you have two variables in the global environment: predictors, a data frame containing 17 measurements for each of 46,808 stars, and response, which is an integer denoting a class. (The stars are sub-divided into 17 classes.) You saw this variable star dataset last week. To make the data a bit more straightforward to analyze, we will see if we can differentiate between class 1 (so-called contact binaries) and all the other classes. This makes sense because class 1 comprises roughly two-thirds of the data.
+```{r}
+response.new = rep("CB",length(response))
+w = which(response!=1)
+response.new[w] = "NON-CB"
+response = factor(response.new,levels=c("NON-CB","CB"))
+```
+Here I "force" `CB` to be class 1, the "positive class."
+
+## Question 5
+
+Split the data! Then go forth and generate a classification tree, and output both the test-set MCR and the confusion matrix. And plot the tree. What are the dominant predictors? (Oh, and check to see if you need to prune the tree. Be sure to note whether you do or not.) Look at the confusion matrix...is one type of error more common than another? Are we more likely to classify CB's correctly or non-CB's? 
+```{r}
+# FILL ME IN
+
+
+```
+```
+FILL ME IN
+```
+
+## Question 6
+
+In Q5, you should have noticed that contact binaries are much more likely to be classified correctly. This is in part because we have imbalanced classes: contact binaries (class 1) make up roughly two-thirds of the data. Imbalanced classes are problematic, particularly when we differentiate potential algorithms by the misclassification rate: if one class has 99% of the data, and all algorithms classify all test observations as being objects of that one class, then all the algorithms are 99% accurate! (Or have an MCR of 1%.) 
+
+How to deal with imbalanced classes is very much an open research topic, but one solution is to resample the training data so that there are equal numbers in each class. This allows for a more honest appraisal of how well an algorithm works, either given the MCR or some other cost function (a topic we will begin diving into next time). Add code below to complete an analysis so as to get the MCR and confusion matrix. Did the MCR change? Is the ability of the classifier to correctly classify non-CB's improved? How about CB's themselves?
+```{r}
+# FILL ME IN
+```
+```
+FILL ME IN
+```

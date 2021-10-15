@@ -1,0 +1,264 @@
+---
+title: "Lab_05R"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 5 Thursday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+Today you will create a logistic regression model for classifying stars vs. quasars and you will assess your performance by computing a test-set misclassification rate.
+
+## Data
+
+We'll begin by importing data on stars and quasars:
+```{r}
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/STAR_QUASAR/Star_Quasar.Rdata"
+load(url(file.path))
+rm(file.path)
+```
+
+The data frame `df` has 8 measurements each for 500 quasars (faraway active galactic nuclei that look like stars) and for 500 stars. The first five columns are u-, g-, r-, i-, and z-band magnitudes, the sixth column is redshift (high for quasars, approximately zero for stars), the seventh column is redshift error, and the eighth column is a factor variable that denotes the class (`QSO` or `STAR`).
+
+The goal is to see if you can correctly classify each object. We will set up a predictor data frame with four colors and a magnitude, and a response vector that is a factor variable with two levels ("QSO" and "STAR"). (Including redshift as a predictor would be cheating: the redshift is how we know for sure whether the objects are quasars or stars in the first place!)
+```{r}
+col.ug = df$u.mag - df$g.mag
+col.gr = df$g.mag - df$r.mag
+col.ri = df$r.mag - df$i.mag
+col.iz = df$i.mag - df$z.mag
+mag.r  = df$r.mag
+predictors = data.frame(col.ug,col.gr,col.ri,col.iz,mag.r)
+response   = df$class
+```
+
+# Questions
+
+## Question 1
+
+Split the data into training and test sets. Then use `ggpairs()` to display the (full) predictor space, while using the argument `mapping=aes(color=response)` to use separate colors for quasars and for stars. Based on what you see, do you expect a clean separation between quasars and stars? (In other words, do you expect a low misclassification rate?)
+```{r}
+library(GGally)
+library(ggplot2)
+
+set.seed(100)
+fraction=.7
+s = sample(nrow(predictors), round(fraction*nrow(predictors)))
+train = predictors[s ,]
+test = predictors[-s ,]
+
+ggpairs(predictors,progress=FALSE, mapping=aes(color=response))
+
+train
+
+
+
+
+```
+
+```
+split = sample.split(predictors$approval_status, SplitRatio = 0.70)
+ 
+# Create training and testing sets
+train = subset(predictors, split == TRUE)
+test = subset(predictors, split == FALSE)
+
+
+
+n = nrow(df)
+trainIndex = sample(1:n, size = round(0.7*n), replace=FALSE)
+train = df[trainIndex ,]
+test = df[-trainIndex ,]
+
+set.seed(123)
+fraction=.07
+s= sample(nrow(predictors), round(fraction*nrow(predictors)))
+train = predictors[s ,]
+test = predictors[-s ,]
+
+
+
+ggpairs(predictors,progress=FALSE, mapping=aes(color=response))
+```
+
+
+```
+I don't expect too clear of a separation because there does seem to be a bit of overlap to some extent.
+```
+
+
+
+
+
+## Question 2
+
+Using code on pages 156-158 of ISLR, carry out a logistic regression analysis of the star-quasar data, and display both the misclassification rate and a table of predictions versus test-set responses (i.e., display the confusion matrix). (Note: it may help you to use the `contrasts()` function to determine the mapping from the factor levels to actual numbers. See the top of page 158.) Challenges: can you create a vector of predicted factors in one line using the `ifelse()` function (which is *not* what ISLR does), and can use compute the misclassification rate using just one logical comparison?
+```{r}
+glm.fit = glm(response[s]~.,data=train,family=binomial)
+summary(glm.fit)
+coef(glm.fit)
+
+
+glm.probs=predict(glm.fit,newdata=test, type="response")
+
+contrasts (response)
+
+#create a vector of class predictions based on whether the predicted probability of STAR is greater than or less than 0.5:
+
+glm.pred=rep("QSO", 1000)
+glm.pred[glm.probs >.5]="STAR"
+table(glm.pred)
+
+tab = table(glm.pred,response)
+tab
+
+(327+216)/1000
+mean(glm.pred==response )
+
+```
+```
+logistic regression correctly predicted the movement of the market 54.3 % of the time
+
+USING IFELSE:
+
+
+for (ii in 1:length(glm.probs)) {
+  ifelse(glm.probs[ii] > 0.5, glm.pred[ii] =="STAR", glm.pred[ii] == "QSO")
+
+}
+table(glm.pred,response)
+
+
+
+
+
+glm.probs=predict(glm.fit,newdata=test,type="response")
+glm.pred = rep(NA, length(glm.probs))
+for (ii in 1:length(glm.prob)) {
+  if(glm.prob[ii] > 0.5) {
+    glm.pred[ii] ="STAR"
+  } else {
+    glm.pred[ii] = "QSO"
+  }
+
+}
+
+
+```
+
+## Question 3
+
+Compute the sensitivity and specificity of logistic regression using definitions on [this web page](https://en.wikipedia.org/wiki/Confusion_matrix). There can be some ambiguity regarding tables: assume that predicting that a QSO is a QSO is a "true positive" here, as opposed to predicting a star is a star (which is a "true negative").
+
+Don't hard-code numbers! If you saved your confusion matrix above to the variable `tab`, then, e.g.,
+```
+TP = tab[1,1]
+FP = tab[2,1]
+```
+
+etc. Map your table to `TP`, `FP`, `TN`, and `FN`, and use these to compute sensitivity and specificity, and then define each in words. In a perfect world, what would the sum of sensitivity and specificity be?
+
+
+
+```{r}
+
+TP = tab[1,1]
+
+FP = tab[2,1]
+
+TN = tab[2,2]
+
+FN = tab[1,2]
+
+
+TP
+FP
+TN
+FN
+
+
+TPR = TP/(TP+FN)
+TNR = TN/(TN+FP)
+
+TPR
+TNR
+
+```
+```
+TP=327
+FP=173
+TN=216
+FN=284
+
+Sensitivity= True Positive Rate (TPR)= TP/(TP+FN)=0.5351882
+Specificity= True Negative Rate (TNR)= TN/(TN+FP)=0.5552699
+
+
+in an ideal the sum would be 2
+
+```
+
+## Question 4
+
+An astronomer might be more interested to know what proportion of objects that are predicted to be quasars actually are quasars. Compute this quantity and determine from the confusion matrix wikipedia page what this quantity is called.
+```{r}
+ACC = (TP+TN)/(TP+TN+FP+FN)
+ACC
+
+
+```
+```
+
+proportion of correct classifications is called accuracy
+and ACC=0.543
+
+```
+
+## Question 5
+
+While we didn't discuss this explicitly in the notes, we can attempt to visualize the distributions of the predicted binomial probabilities $\hat{p}$ versus class. Do that below. I'm going to leave it as ambiguous about how exactly you might do this.
+
+
+```{r}
+
+
+gg = ggplot(glm.pred, aes(x=, y= response)) + geom_point() + 
+  stat_smooth(method="glm", method.args=list(family="binomial"), se=FALSE)
+
+gg
+
+```
+
+
+
+
+## Question 6
+
+You should be sufficiently comfortable with setting up basic analyses that you are going to do something different here: you are going to perform an analysis using a method not described in class. Linear discriminant analysis basically assumes that the predictors for the `QSO` class and for the `STAR` class are each sampled from a multivariate (specifically $p$-dimensional) normal distribution; the means are different for each class, but the "widths" of the distributions (as encoded in a covariance matrix) are the same. For each test datum, you can determine the estimated probability density for quasars, and the estimated probability density for stars; if the former is larger, we predict the datum is a quasar, and if the latter is larger, we predict the datum is a star. Those details aside, go to pages 160 and 161 of ISLR and implement an LDA analysis. Compute the misclassification rate and display the confusion matrix. Does LDA do better than logistic regression? Does it do worse?
+```{r}
+
+library(MASS)
+lda.fit = lda(response[s]~.,data=train)
+lda.fit
+
+lda.pred=predict(lda.fit, newdata=test)
+names(lda.pred)
+
+
+lda.class=lda.pred$class
+lda.class
+
+table(lda.class,test)
+
+
+
+
+```
+```
+FILL ME IN
+```
