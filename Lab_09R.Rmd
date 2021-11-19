@@ -1,0 +1,204 @@
+---
+title: "Lab_09R"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 9 Thursday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Data
+
+Below we read in the pulsar dataset we used last time. Except...SVM is **slow**. Very slow. Order n-cubed slow. It is not an algorithm made for big data. So we will do what we did last time: construct a smaller dataset, this time with sample size 1638 that has the response variable evenly split between classes.
+```{r}
+
+
+rm(list=ls())
+file.path = "http://www.stat.cmu.edu/~pfreeman/pulsar.Rdata"
+load(url(file.path))
+rm(file.path)
+set.seed(406)
+w.0 = which(response$X9==0)
+w.1 = which(response$X9==1)
+s = sample(length(w.0),length(w.1)/2)
+predictors = predictors[c(w.0[s],w.1[1:length(s)]),]
+response = as.character(response$X9)[c(w.0[s],w.1[1:length(s)])]
+predictors = scale(predictors)
+predictors = data.frame(predictors)
+cat("Number of predictor variables: ",ncol(predictors),"\n")
+cat("Sample size:                   ",nrow(predictors),"\n")
+response = factor(response,labels=c("NO","YES"))
+contrasts(response)
+
+
+#No is 0, Yes 1
+```
+The eight predictors are summary statistics that describe the distribution of brightness measurements of a pulsar candidate (mean, standard deviation, skewness, kurtosis) as well as the distribution of "dispersion measure" readings (also mean, standard deviation, skewness, kurtosis).
+
+The response is either "NO" (the candidate is *not* a pulsar) or "YES".
+
+# Questions
+
+## Question 1
+
+Split the data and perform a basic logistic regression analysis. (Yes, logistic regression...you are establishing a baseline and seeing if SVM can beat it.) You just need to output the test-set MCR and the confusion matrix.
+```{r}
+
+response = data.frame(response)
+
+set.seed(100)
+fraction=.7
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+
+resp.train = response[sp, ]
+resp.test = response[-sp ,]
+
+#logistic regression model using training data
+glm.fit = glm(resp.train~.,data=pred.train,family="binomial")
+summary(glm.fit)
+
+predicted = predict(glm.fit, pred.test, type="response")
+
+glm.pred=rep("NO", length(response))
+glm.pred[predicted >.5]="YES"
+tab = table(glm.pred,resp.test)
+tab
+
+(10)/(215+1+10)
+#MCR: 4.424
+
+
+```
+
+## Question 2
+
+We will work with the `e1071` package. (Its name comes from the coding for the Institute of Statistics and Probability Theory at the Technische Universitat Wien, in Vienna. It's like us calling a package `36-290`. Which we should.) 
+
+Here, code a support vector classifier (meaning, use `kernel="linear"`): use the `tune()` function with a representative sequence of potential costs $C$, then extract the best model. If the optimum value of $C$ occurs at or very near the end of your sequence of potential costs, alter the sequence. The variable `best.parameters`, embedded in the output, provides the optimal value for $C$. Provide that value. Use the best model to generate predictions, a test-set MCR, and a confusion matrix. Does the support vector classifier "beat" logistic regression? How do the results differ?
+
+Note: `e1071` is prickly about wanting the response vector to be part of the predictor data frame. To join the predictors and response together, do the following: `pred.train = cbind(pred.train,resp.train)`. `cbind()` means "column bind."
+
+Note that `tune()` does cross-validation on the training set to estimate the optimum value of $C$. Which means that the training data are randomly assigned to folds (by default, 10...to change this, you'd make a call like `tune.control(cross=5)`). Which means you should set a random number seed before calling `tune()`. For reproducibility n'at.
+
+See the third code block of page 364 of `ISLR` for an example of how to specify ranges of tuning parameters. Note there is only one here: `cost`. As for prediction: `tune()` will return an object that includes `best.model`. Pass this to `predict()` along with the argument `newdata=` whatever you call the test predictors data frame. By default, `predict()` will output a vector of class predictions, so there is no need to round off to determine classes.
+```{r}
+
+response = data.frame(response)
+
+set.seed(100)
+fraction=.7
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+
+resp.train = response[sp, ]
+resp.test = response[-sp ,]
+
+pred.train = cbind(pred.train,resp.train)
+
+
+library(e1071)
+set.seed(202) # reproducible cross-validation
+tune.out = tune(svm,resp.train~.,data=pred.train,kernel="linear",ranges=list(cost=10^seq(-2,2,by=0.2)))
+cat("The estimated optimal value for C is ",as.numeric(tune.out$best.parameters),"\n")
+
+names(tune.out)
+
+resp.pred = predict(tune.out$best.model,newdata=pred.test)
+
+
+mean(resp.pred!=resp.test)
+table(resp.pred,resp.test)
+
+#Use the best model to generate predictions, a test-set MCR, and a confusion matrix. Does the support vector classifier "beat" logistic regression? How do the results differ?
+```
+```
+The estimated optimal value for C is  100 
+
+
+MCR 5.7%
+(8+20)/(247+20+8+216)
+
+
+The support vector classifier doesn't "beat" logistic regression in the sense that the MCR iss higher 
+```
+
+## Question 3
+
+Now code a support vector machine with a polynomial kernel. In addition to tuning `cost`, you also have to tune the polynomial `degree`. Try integers from 2 up to some maximum number (not too large, like 4). How do the results change? (Note: if you get the warning `WARNING: reaching max number of iterations`, do not worry about it.)
+```{r}
+
+response = data.frame(response)
+
+set.seed(100)
+fraction=.7
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+
+resp.train = response[sp, ]
+resp.test = response[-sp ,]
+
+
+pred.train = cbind(pred.train,resp.train)
+
+
+set.seed(202)
+tune.out = tune(svm,resp.train~.,data=pred.train,kernel="polynomial",
+                ranges=list(cost=10^seq(0,4,by=0.5),degree=2:4))
+cat("The estimated optimal values for C and degree are ",as.numeric(tune.out$best.parameters),"\n")
+
+
+resp.pred = predict(tune.out$best.model,newdata=pred.test)
+(svm.poly.mcr = mean(resp.pred!=resp.test))
+table(resp.pred,resp.test)
+```
+```
+MCR is the same 0.05702648
+
+
+```
+
+## Question 4
+
+Now code a support vector machine with a radial kernel. In addition to tuning `cost`, you also have to tune the parameter `gamma`. Try a base-10 logarithmic sequence of values that includes -3 (for $10^-3 = 0.001$). How do the results change?
+```{r}
+response = data.frame(response)
+
+set.seed(100)
+fraction=.7
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+
+resp.train = response[sp, ]
+resp.test = response[-sp ,]
+
+pred.train = cbind(pred.train,resp.train)
+
+
+set.seed(202)
+tune.out = tune(svm,resp.train~.,data=pred.train,kernel="radial",
+                ranges=list(cost=10^seq(-1,1,by=0.5),gamma=10^seq(-1,1,by=0.4)))
+cat("The estimated optimal values for C and gamma are ",as.numeric(tune.out$best.parameters),"\n")
+
+resp.pred = predict(tune.out$best.model,newdata=pred.test)
+(svm.poly.mcr = mean(resp.pred!=resp.test))
+
+table(resp.pred,resp.test)
+ 
+```
+
+```
+MCR:0.06517312, higher than the previous ones
+```
+
+
+
+
+
+

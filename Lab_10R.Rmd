@@ -1,0 +1,237 @@
+---
+title: "Lab_10R"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 10 Thursday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+## Data
+
+Below we read in the `EMLINE_MASS` dataset, in which the strengths of 10 emission lines are recorded for each of 21,046 galaxies, along with the galaxy masses.
+```{r}
+rm(list=ls())
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/EMLINE_MASS/emission_line_mass.Rdata"
+load(url(file.path))
+rm(file.path)
+x = predictors$H_ALPHA
+x.tmp = log10(x[x>0])
+y     = responses[x>0,1]
+x     = x.tmp
+df    = data.frame(x,y)
+```
+Today we are simply playing around with kernel density estimation and kernel regression, so all we are going to keep is the values for the strongest emission line, the so-called "H$\alpha$" line at 656 nanometers (which we will call $x$), and the masses (which we will call $y$). We also filter the data so as to keep only positive emission line strengths, so that we can implement a logarithmic transformation for $x$.
+
+# Questions
+
+## Question 1
+
+Do some EDA. First, use `ggplot2` to create histograms of both $x$ and $y$, and then use it to make a scatter plot of $x$ and $y$. Don't worry about downsampling the amount of data; rather, change the transparency of the points by setting the alpha parameter to, e.g., 0.1.
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+ggplot(data=df,mapping=aes(x)) + geom_histogram(color="grey",fill="lightblue",bins=60)
+
+ggplot(data=df,mapping=aes(y)) + geom_histogram(color="grey",fill="lightblue",bins=60)
+
+ggplot(data=df,mapping=aes(x,y)) + geom_point(color="blue",size=.3, alpha=.1)
+```
+
+## Question 2
+
+Create a density estimate for $x$ using the `density()` function and the default bandwidth. Print the default bandwidth. Then overlay the density estimate on top of a density histogram. One creates a density histogram by adding an extra argument to `geom_histogram()`: `aes(y=..density..)`. One can then overlay the density estimate using an additional call to `geom_line()`, to which you pass a data frame with the $x$ output of `density()` in one column and the $y$ output of `density()` in the other.
+```{r}
+d.estimate1=density(x, bw="nrd0", adjust =1)
+d.estimate1
+
+"Default bandwith `bw`=0.09539"
+
+df.estimate1 = data.frame(d.estimate1$x,d.estimate1$y)
+df.estimate1
+
+
+ggplot(data=df,mapping=aes(x)) + geom_histogram(aes(y=..density..),color="grey",fill="lightblue",bins=60)+ geom_line(data=df.estimate1,aes(x = d.estimate1.x, y =d.estimate1.y))
+
+
+```
+
+## Question 3
+
+Using the formula for the Silverman rule that is given in the notes, compute the default bandwidth by hand. Do you get the same value as returned by `density()`? (If you don't...you coded the formula incorrectly.)
+
+```{r}
+#s is the sample standard deviation and is the inter-quartile range
+
+
+#s = sd(x)=0.7736771
+
+#d.estimate$n=20722
+
+#IQR/1.34=0.9526457
+
+h = 0.9*(0.7736771)*(20722^(-1/5))
+h
+
+```
+## Question 4
+
+Repeat Q2, but use the unbiased cross-validation estimator, whose use is specified in the notes. Again, print the bandwidth and make the same density estimate overlaid onto histogram plot as in Q2. Stare hard at the two plots, the one here and the one in Q2: can you see any differences in the density estimates?
+```{r}
+d.estimate=density(x, bw="ucv", adjust =1)
+d.estimate
+
+
+#Default Bandwidth 'bw' = 0.05836
+
+df.estimate = data.frame(d.estimate$x,d.estimate$y)
+df.estimate
+
+  
+ggplot(data=df,mapping=aes(x)) + geom_histogram(aes(y=..density..),color="grey",fill="lightgrey",bins=60)+ geom_line(data=df.estimate,aes(x = d.estimate.x, y =d.estimate.y))
+
+
+```
+```
+I do see slight differences in the density estimates. This one (compared to the previous one in question 2) is less smoothed and closer to the shape of the histogram.
+```
+
+## Question 5
+
+Density estimates tend to work fine with unbounded data, but can exhibit boundary bias if the data values are bounded on either or both sides. Repeat Q4, except run the code for only $x$ values between 0 and 1, and set the bandwidth manually to 0.1. What do you observe?
+```{r}
+df.new = filter(df, x<=1 & x>=0)
+
+d.estimate2=density(df.new$x, bw=0.1, adjust =1)
+d.estimate2
+
+
+df.estimate2 = data.frame(d.estimate2$x,d.estimate2$y)
+df.estimate2
+
+  
+ggplot(data=df.new,mapping=aes(x)) + geom_histogram(aes(y=..density..),color="grey",fill="lightgrey",bins=60)+ geom_line(data=df.estimate2,aes(x = d.estimate2.x, y =d.estimate2.y))
+
+
+
+
+
+
+```
+```
+The estimate line does not match the histogram at all, and it is very removed from the actual shape of the histogram. It also extends past the range of values that x takes.
+```
+
+## Question 6
+
+Pick 20 points at random from the initial, unbounded $x$ sample. Perform density estimates with "gaussian", "triangular", and "epanechnikov" kernels. Use `ggplot()` to draw the three density estimates (without the histogram). Do you see any significant differences in the estimates? Change the number of randomly sampled points to 500 and redo the plot...are there still any discernible differences?
+```{r}
+
+set.seed(100)
+s=sample(x, 20)
+
+k.gaussian =density(s, bw="nrd0", adjust =1, kernel="gaussian")
+
+k.triangular=density(s, bw="nrd0", adjust =1, kernel="triangular")
+  
+epanechnikov= density(s, bw="nrd0", adjust =1, kernel="epanechnikov")
+
+
+
+k.gaussian = data.frame(k.gaussian$x,k.gaussian$y)
+k.triangular=data.frame(k.triangular$x,k.triangular$y)
+epanechnikov=data.frame(epanechnikov$x,epanechnikov$y)
+
+
+k.gaussian_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=k.gaussian,aes(x = k.gaussian.x, y =k.gaussian.y), color="lightblue")
+
+k.triangular_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=k.triangular,aes(x = k.triangular.x, y =k.triangular.y),color="lightpink")
+
+epanechnikov_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=epanechnikov,aes(x = epanechnikov.x, y =epanechnikov.y),color="lightgreen")
+
+
+k.gaussian_plot 
+k.triangular_plot
+epanechnikov_plot
+
+
+
+
+
+
+set.seed(100)
+s.500=sample(x, 500)
+
+
+k5.gaussian =density(s.500, bw="nrd0", adjust =1, kernel="gaussian")
+
+k5.triangular=density(s.500, bw="nrd0", adjust =1, kernel="triangular")
+  
+epanechnikov.5= density(s.500, bw="nrd0", adjust =1, kernel="epanechnikov")
+
+
+
+k5.gaussian = data.frame(k5.gaussian$x,k5.gaussian$y)
+k5.triangular=data.frame(k5.triangular$x,k5.triangular$y)
+epanechnikov.5=data.frame(epanechnikov.5$x,epanechnikov.5$y)
+epanechnikov.5
+
+k5.gaussian_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=k5.gaussian,aes(x = k5.gaussian.x, y =k5.gaussian.y), color="lightblue")
+
+k5.triangular_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=k5.triangular,aes(x = k5.triangular.x, y =k5.triangular.y),color="lightpink")
+
+epanechnikov.5_plot =ggplot(data=df,mapping=aes(x)) + geom_line(data=epanechnikov.5,aes(x = epanechnikov.5.x, y =epanechnikov.5.y),color="lightgreen")
+
+
+k5.gaussian_plot
+k5.triangular_plot
+epanechnikov.5_plot
+
+
+```
+```
+There are fairly similar, gaussian tends to be smoother where the curved peaks are but generally all three seem to take on similar shapes. When we resample to 500 points, the graph seems to have two peaks instead of one.
+```
+
+## Question 7
+
+Estimate galaxy mass from emission-line strength using the Nadaraya-Watson kernel estimator.
+
+In the normal model learning paradigm, you split the data and learn the model using the training data, then apply the model to predict response values for the test data. You then compute the MSE.
+
+For Nadaraya-Watson, the way this would play out is that we would split the data, then perform, e.g., cross-validation on the *training* set to determine the optimal value of $h$. We would then apply this value of $h$ when working with the test data, and when computing the MSE.
+
+Here, we are going to keep things simple: do not split the data, and compute a plug-in value of $h$ using one of the `bandwidth` functions in the base `stats` package. (Type, e.g., `?bw.nrd0` at the prompt in the Console pane.) Estimate $\hat{y}$ for all the data using a Gaussian kernel, then plot the predicted response vs. the observed response. (Note that this is a little tricky! First, you have to specify `x.points=x` in the call to `ksmooth()`,
+so that the model is actually evaluated at the input points $x$ rather than along a default grid. Then you have to compare `out$y` versus `y[order(x)]` in the diagnostic plot, because `ksmooth()` sorts the $x$ values in ascending
+order. This is all a bit painful to figure out. Your final diagnostic plot won't look great...but that's OK, because we've really simplified the regression here [only one predictor variable, not 10].)
+
+
+```{r}
+bw.nrd0(x)
+#0.09539287
+
+gaussian.kernel = density(x, bw=0.09539287, adjust =1, kernel="gaussian")
+
+
+k= ksmooth(x, y, bandwidth = 0.09539287,
+        range.x = range(x),
+        n.points = max(100L, length(x)), x.points=x)
+observed=gaussian.kernel$y
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+

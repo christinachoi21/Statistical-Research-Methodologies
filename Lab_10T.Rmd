@@ -1,0 +1,200 @@
+---
+title: "Lab_10T"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 10 Tuesday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+This is going to be a bit more of an open-ended lab, since there is only really so much one can say about Naive Bayes itself. The goal will be for you to practice learning classifiers for pulsar detection.
+
+Pulsars are neutron stars that spin rapidly (up to many times per second!) and give off "pulses" of electromagnetic radiation (i.e., light). The pulses occur because the physics of the pulsar environment leads to pulsar emission being "beamed"...unlike the Sun, which gives off essentially the exact same amount of light in all directions, a pulsar may give off light in certain preferential directions. (Think of a lighthouse...that will give you the intuitive picture.) If we are lucky enough to sit in a location that the beam passes over every time a pulsar rotates, then we see less light, then more light, then less light, etc.
+
+To back up: a neutron star is a stellar remnant of size roughly 10 miles across. A neutron star is generally formed during a supernova at the end of a massive star's lifetime. (Stars that are eight solar masses or more generally explode and leave behind neutron stars; smaller stars tend to slough off their gas over time and leave behind white dwarfs, which are Earth-sized.) A neutron star is called a neutron star because it is pretty much literally a bag of neutrons (no electrons, no protons, just neutrons) that holds itself up via a mechanism called "degeneracy pressure." Without degeneracy pressure, the neutron star would simply collapse and become a black hole. (And with enough mass, one can induce this sort of collapse--hence the existence of black holes.)
+
+At the end of the day: we scan the skies, we get data, we need to figure out which pulsar candidates are pulsars. A binary classification problem. Onwards...
+
+## Data
+
+Today we will work with the pulsar dataset, this time with 1639 "NO"'s and 1639 "YES"'s.
+```{r}
+rm(list=ls())
+file.path = "http://www.stat.cmu.edu/~pfreeman/pulsar.Rdata"
+load(url(file.path))
+rm(file.path)
+set.seed(406)
+w.0 = which(response$X9==0)
+w.1 = which(response$X9==1)
+s = sample(length(w.0),length(w.1))
+predictors = predictors[c(w.0[s],w.1),]
+response = as.character(response$X9)[c(w.0[s],w.1)]
+predictors = scale(predictors)
+predictors = data.frame(predictors)
+cat("Number of predictor variables: ",ncol(predictors),"\n")
+cat("Sample size:                   ",nrow(predictors),"\n")
+response = factor(response,labels=c("NO","YES"))
+```
+The eight predictors are summary statistics that describe the distribution of brightness measurements of a pulsar candidate (mean, standard deviation, skewness, kurtosis) as well as the distribution of "dispersion measure" readings (also mean, standard deviation, skewness, kurtosis).
+
+# Questions
+
+## Question 1
+
+Again, this is an open-ended lab. How well can you do trying to identify pulsars? Split the data into training and test subsets, and learn classifiers for naive Bayes, logistic regression, trees, and random forest. (Because we are *not* reducing the dataset size, you will not want to code SVM or KNN. Note that because we are not working with SVM or KNN, we do not standardize the data.) The classes are unbalanced (90% non-pulsars, 10% pulsars), so you should target AUC as your metric by which to compare the results of different classifiers. The bulk of your work will be going back to old labs (and coding Naive Bayes using the notes as a guide), and seeing if bit by bit you can get the AUC for each classifier. Declare a winner: which classifier that you try gives you the best AUC? Overplot all four ROC curves onto a single plot. Take the model with the best AUC value and use Youden's $J$ statistic to determine an optimal class-separation threshold, then use that threshold to make class predictions. Last, construct a confusion matrix and output the misclassification rate.
+
+```{r}
+set.seed(100)
+fraction=.7
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+
+resp.train = response[sp]
+resp.test = response[-sp]
+
+suppressMessages(library(pROC))
+
+#naive Bayes
+library(e1071)
+nb.out = naiveBayes(resp.train~.,data=pred.train)
+nb.pred = predict(nb.out,newdata=pred.test,type="class")
+
+nb.prob = predict(nb.out,newdata=pred.test,type="raw")[,2]
+
+table(nb.pred,resp.test)
+mean(nb.pred!=resp.test)
+#MCR:0.09257375
+
+
+#logistic regression
+log.out = glm(resp.train~.,data=pred.train,family=binomial)
+log.prob = predict(log.out,newdata=pred.test,type="response")
+log.pred = ifelse(log.prob>0.5,"YES","NO")
+table(log.pred,resp.test)
+
+mean(log.pred!=resp.test)
+
+#MCR:0.04781282
+contrasts(response)
+#No = 0, Yes = 1
+
+
+#trees
+
+library(rpart)
+rpart.out =rpart(resp.train~.,data=pred.train)
+class.prob= predict(rpart.out,newdata=pred.test, type="prob")[,2] #prob of class 1
+class.pred = ifelse(class.prob>0.5,"YES","NO")
+mean(class.pred!=resp.test)
+#MCR:0.08138352
+
+table(class.pred,resp.test)
+library(rpart.plot)
+rpart.plot(rpart.out,extra=104)
+
+
+#random forest
+suppressMessages(library(tidyverse)) ; suppressMessages(library(randomForest))
+set.seed(100)
+rf.out = randomForest(resp.train~.,data=pred.train,importance=TRUE)
+resp.prob.rf = predict(rf.out,newdata=pred.test,type="prob")[,2]
+resp.pred.rf = ifelse(resp.prob.rf>0.5, "YES","NO")
+
+mean(resp.pred.rf!=resp.test)
+#MCR:0.04781282
+
+
+
+roc.glm = roc(resp.test, log.prob)
+plot(roc.glm,col="red")
+
+roc.tree = roc(resp.test, class.prob)
+plot(roc.tree,col="blue", add= TRUE)  
+
+roc.rf = roc(resp.test, resp.prob.rf)
+plot(roc.rf, col="pink", add=TRUE)
+
+roc.nb = roc(resp.test, nb.prob)
+plot(roc.rf, col="lightgrey", add=TRUE)
+
+
+cat("AUC for random forest:",roc.rf$auc, "\n")
+cat("AUC for naive bayes:",roc.nb$auc, "\n")
+cat("AUC for tree:",roc.tree$auc, "\n")
+cat("AUC for logistic regression:",roc.glm$auc, "\n")
+
+
+J = roc.rf$sensitivities + roc.rf$specificities - 1
+
+w = which.max(J)
+cat("Optimum threshold for random forest: ",roc.rf$thresholds[w],"\n")
+#0.543
+#data does not have balanced classes but optimal threshold seems like it's close to .5, is this normal?
+
+
+set.seed(100)
+rf.out = randomForest(resp.train~.,data=pred.train,importance=TRUE)
+new.resp.prob.rf = predict(rf.out,newdata=pred.test,type="response",cutoff=c(1-0.543,0.543))
+table(resp.prob.rf,resp.test)
+
+mean(new.resp.prob.rf!=resp.test)
+#MCR:0.04679552
+
+
+```
+
+
+
+
+
+
+```
+
+which classifier that you try gives you the best AUC: random forest
+use Youden's $J$ statistic to determine an optimal class-separation threshold, then use that threshold to make class predictions. 
+
+Last, construct a confusion matrix and output the misclassification rate.
+
+
+```
+
+
+
+
+
+
+
+
+
+
+```
+roc.glm = roc(resp.test, log.pred)
+plot(roc.glm, col="blue")
+
+roc.random = roc(test$response, resp.pred.rf)
+plot(roc.random,add=TRUE, col="red")
+
+roc.random$auc
+roc.glm$auc
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+

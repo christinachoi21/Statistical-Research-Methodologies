@@ -1,0 +1,278 @@
+---
+title: "Lab_08T"
+author: "36-290 -- Statistical Research Methodology"
+date: "Week 8 Tuesday -- Fall 2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+---
+
+# Preliminaries
+
+## Goal
+
+Today you will largely follow the script of the last lab, while applying random forest in place of classification and regression trees.
+
+# Data, Part I
+
+Below we read in the same data that we used last time, except that we downsample the data to have sizes 10000 (train) and 5000 (test) to keep computation time manageable. (Random forest takes time because you generate 500 trees by default.)
+```{r}
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/DM_GALAXY/Massive_Black_II.Rdata"
+load(url(file.path))
+rm(file.path)
+
+resp.train = resp.train.df$prop.sfr
+w = which(resp.train>0)
+pred.train = pred.train[w,]
+resp.train = log10(resp.train[w])
+
+resp.test  = resp.test.df$prop.sfr
+w = which(resp.test>0)
+pred.test = pred.test[w,]
+resp.test = log10(resp.test[w])
+
+set.seed(202)
+s = sample(length(resp.train),10000)
+pred.train = pred.train[s,]
+resp.train = resp.train[s]
+s = sample(length(resp.test),5000)
+pred.test = pred.test[s,]
+resp.test = resp.test[s]
+
+cat("Sample sizes: train = ",length(resp.train)," test = ",length(resp.test),"\n")
+```
+
+# Questions
+
+## Question 1
+
+Because we reduced the sample size relative to that in the last lab, re-determine the test-set MSE for a linear regression model and then determine the test-set MSE for a random forest model. (In the argument list for `randomForest`, set `importance=TRUE`) Also display the predicted response versus observed response diagnostic plot (with the same limits on each axis!). Did the test-set MSE improve by using random forest? **Note: for reproducible results, set the seed before running random forest!**
+```{r}
+
+model = lm(resp.train~.,data=pred.train)
+model
+
+resp.pred.lm = predict(model,newdata=pred.test)
+
+lmtest_MSE = mean((resp.test - resp.pred.lm) ^ 2)
+lmtest_MSE
+
+
+
+suppressMessages(library(tidyverse)) ; suppressMessages(library(randomForest))
+set.seed(100)
+rf.out = randomForest(resp.train~.,data=pred.train,importance=TRUE)
+resp.pred.random = predict(rf.out,newdata=pred.test)
+
+randomtest_MSE = mean((resp.test - resp.pred.random) ^ 2)
+randomtest_MSE
+
+
+ggplot(data=data.frame("x"=resp.test,"y"=resp.pred.random),mapping=aes(x=x,y=y)) +
+  geom_point(size=0.1,color="saddlebrown") + xlim(0,2) + ylim(0,2) + 
+  geom_abline(intercept=0,slope=1,color="red")
+
+
+#what is predicted response versus observed response in this context?
+```
+```
+lmtest_MSE: 0.2503715
+randomtest_MSE:0.2317997
+```
+
+## Question 2
+
+Create a variable importance plot for random forest. (See page 330 of ISLR.) You can subdivide the predictor variables into groups: those that reference dark matter particle velocity (ones with "v"), mass ("m"), or radius from the halo center ("r"), along with those that reference the gravitational potential (the ones with angle variables) and the shape of the halo ("shapes"). Do some inference: what is the most important property of a halo with regard to predicting star-formation rate? How about the least important?
+```{r}
+
+importance(rf.out)
+
+varImpPlot(rf.out)
+
+```
+```
+what is the most important property of a halo with regard to predicting star-formation rate?
+-Halos.vdisp, halos.rcirc, halos.m_dm, r_parent, halos.vcirc
+
+How about the least important?
+-ShapesDM.q3d, shapesDM.s3d, thetaTid, phiTid
+
+
+
+
+
+```
+
+Now we turn our attention to classification.
+
+# Data, Part II
+
+We will now load the second dataset from the last lab, but we will do two things: (1) cut down the sample size to get random forest to run faster, and (2) balance the classes.
+```{r}
+rm(list=ls())
+
+file.path = "https://raw.githubusercontent.com/pefreeman/36-290/master/EXAMPLE_DATASETS/TD_CLASS/css_data.Rdata"
+load(url(file.path))
+rm(file.path)
+
+# Eliminate the max.slope column (the 11th column), which has infinities.
+predictors = predictors[,-11]
+
+# Cut the CB and NON-CB class sizes to 5000 samples each.
+set.seed(303)
+w = which(response==1)
+s = sample(length(w),5000)
+predictors.cb = predictors[w[s],]
+response.cb   = response[w[s]]
+w = which(response!=1)
+s = sample(length(w),5000)
+predictors.noncb = predictors[w[s],]
+response.noncb   = response[w[s]]
+predictors = rbind(predictors.cb,predictors.noncb)
+response   = c(response.cb,response.noncb)
+
+response.new = rep("CB",length(response))
+w = which(response!=1)
+response.new[w] = "NON-CB"
+response = factor(response.new)
+```
+
+# Questions
+
+## Question 3
+
+You know the drill: split the data (or do CV if you are feeling adventurous), then learn a logistic regression model and output the test-set MCR value and the confusion matrix. Then learn a random forest model, output the variable importance plot and the test-set MCR value and the confusion matrix. Compare and contrast the results: would you use the logistic regression model or the random forest model? As for variable importance: when using a tree, `flux.mid35`, `mad`, and `skew` tended to be important predictors. Is that result consistent with what you observe here? (Note: for logistic regression, `predict()` with `type="response"` gives you numbers you need to round off, whereas for random forest, you'll get actual CB vs. NON-CB predictions. Sigh. Inconsistency is not a virtue.)
+```{r}
+library(caret)
+df= data.frame(predictors, response)
+df
+
+set.seed(100)
+
+fraction=.7
+
+input_CB = df[which(df$response == "CB"), ]
+
+input_NONCB = df[which(df$response == "NON-CB"), ]
+
+sCB = sample(length(input_CB), round(fraction*length(input_CB)))
+
+sNCB = sample(length(input_NONCB), round(fraction*length(input_NONCB)))
+
+train.CB= input_CB[sCB,]
+train.NONCB =input_NONCB[sNCB,]
+
+train = rbind(train.CB, train.NONCB)
+
+
+test.CB= input_CB[-sCB,]
+test.NONCB =input_NONCB[-sNCB,]
+
+test = rbind(test.CB, test.NONCB)
+
+
+glm.fit = glm(response~.,data=train,family=binomial)
+glm.fit
+summary(glm.fit)
+coef(glm.fit)
+
+predicted = predict(glm.fit, test, type="response")
+
+contrasts(response)
+glm.pred=rep("CB", length(response))
+glm.pred[predicted >.5]="NON-CB"
+tab = table(glm.pred,response)
+tab
+
+MCRglm= (2093+3372)/(2093+3372+1628+2907)
+MCRglm
+mean(glm.pred == response)
+
+
+suppressMessages(library(tidyverse)) ; suppressMessages(library(randomForest))
+set.seed(100)
+rf.out = randomForest(response~.,data=train,importance=TRUE)
+rf.out
+rf.pred = predict(rf.out,newdata=test, type="response")
+
+rftab =table(rf.pred, test$response)
+rftab
+importance(rf.out)
+varImpPlot(rf.out, type=1)
+
+MCRrf= (3365+3257)/(3365+3257+1731+1623)
+MCRrf
+
+
+```
+
+
+```
+I would use the random forest model
+As for variable importance: when using a tree, `flux.mid35`, `mad`, and `skew` tended to be important predictors. That result is consistent with what we observe here
+
+
+MCRglm: 0.5026
+MCRrf:0.6637931
+```
+
+## Question 4
+
+Install and load the `pROC` package, and plot ROC curves for both logistic regression and random forest. (Google the documentation for the `pROC` package to see how to do this; basically, call the `roc()` function and pass its output to `plot()`. In order to put both curves on the same plot: call `plot()` once, then call `plot()` again with the argument `add=TRUE`. This adds a curve to an existing plot. Also, to tell the curves apart: make them different colors. If you want to be adventurous: add a `legend()`.) For logistic regression, use the class probabilities that you get by calling `predict()` with `type="response"`, whereas for random forest, call `predict()` with `type="prob"`, <i>then</i> extract the <i>second</i> column. Which model has the best AUC? (Try examining the output from `roc()` to determine this. Remember `names()`?)
+
+Note: to extract numerical probabilities for class 1 for logistic regression and for random forest, use the following.
+```
+resp.pred.log = predict(log.out,newdata=pred.test,type="response")
+resp.pred.rf  = predict(rf.out,newdata=pred.test,type="prob")[,2]
+
+```
+```{r}
+
+resp.pred.rf  = predict(rf.out,newdata=test,type="prob")[,2]
+
+library(pROC)
+roc.glm = roc(test$response, predicted)
+plot(roc.glm, col="blue")
+
+roc.random = roc(test$response, resp.pred.rf)
+plot(roc.random,add=TRUE, col="red")
+
+roc.random$auc
+roc.glm$auc
+```
+```
+random forest has greater AUC
+```
+
+## Question 5
+
+There are many ways to determine what the optimum class-separation threshold would be for any given analysis. One way that is based directly on ROC curves is to determine which threshold maximizes Youden's $J$ statistic: $J$ = `specificity` + `sensitivity` - 1. (Basically, it gives the same cost to misspecification and to missensitivity...it is what you use if you seek accuracy in both classes simultaneously.) For random forest, determine which threshold value maximizes Youden's $J$ statistic. (The object output by `roc()` contains all the information you need!) In retrospect, are you surprised by the value? Is specificity or sensitivity higher?
+```{r}
+names(roc.random)
+roc.random$auc
+roc.glm$auc
+
+
+rf.sensitive = roc.random$sensitivities
+rf.specific = roc.random$specificities
+
+coords(roc.random, "best", ret="threshold", transpose = FALSE)
+
+J = rf.specific + rf.sensitive -1
+
+index = max(J)
+
+
+
+```
+
+
+```
+rf.specific + rf.sensitive= 1.3323978
+ J = 0.3323978
+ Optimal threshold= .537
+ Sensitivity higher
+ 
+```
