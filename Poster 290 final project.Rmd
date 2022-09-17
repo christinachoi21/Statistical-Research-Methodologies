@@ -1,0 +1,351 @@
+---
+title: "Final poster 290"
+author: "christina choi"
+date: "11/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+```{R, echo=FALSE}
+rm(list=ls())
+file.path = "https://github.com/pefreeman/36-290/raw/master/PROJECT_DATASETS/ACTIVE_CLASS/active_class.Rdata"
+load(url(file.path))
+rm(file.path)
+```
+
+
+```{r echo=FALSE}
+suppressMessages(library(magrittr))
+suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(GGally))
+suppressMessages(library(corrplot))
+suppressMessages(library(tidyr))
+suppressMessages(library(bestglm))
+suppressMessages(library(glmnet))
+suppressMessages(library(tidyverse))
+suppressMessages(library(pROC))
+suppressMessages(library(e1071))
+suppressMessages(library(rpart))
+suppressMessages(library(randomForest))
+suppressMessages(library(FNN))
+suppressMessages(library(xgboost))
+```
+
+
+```{r}
+df<- df %>% filter(., g_r!= 0)
+```
+
+```{r}
+
+df <- df %>% select(-O3_Hb, -O2_Hb,-sigma_o3, -sigma_star)
+
+df
+```
+
+
+```{r}
+df.facet = df %>% dplyr::select(.,-label) %>% gather(.)
+ggplot(data=df.facet,mapping=aes(y=value,x=rep(df$label,5))) + geom_boxplot(fill="lightblue") + facet_wrap(~key,scales='free_y') + xlab("label")
+```
+
+
+
+```{r}
+df.no.lab = subset(df, select = -label)
+predictors = df.no.lab
+response   = df$label
+
+
+set.seed(100)
+fraction=.65
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+resp.train = response[sp]
+resp.test = response[-sp]
+
+
+
+```
+
+```{r}
+pca.out = prcomp(df.no.lab, scale=TRUE, retx = TRUE, center = TRUE, tol = NULL)
+
+v = pca.out$sdev^2
+pve = v/sum(v)
+cpve = round(cumsum(v/sum(v)),3)
+cpve
+
+
+pr_var = data.frame(varExplained = pca.out$sdev^2)
+pr_var = pr_var %>% mutate(pve = varExplained / sum(varExplained))
+```
+
+```{r}
+ggplot(pr_var, aes(as.numeric(row.names(pr_var)), cumsum(pve))) +
+  geom_point() + geom_line()+ geom_hline(yintercept=.95, linetype="dashed", color="grey", size=.6) +
+  xlab("Principal Component") +
+  ylab("Cumulative Proportion of Variance Explained")
+```
+
+
+
+
+
+
+```{r}
+
+glm.fit = glm(resp.train~.,data=pred.train,family="binomial")
+
+glm.prob=predict(glm.fit,newdata=pred.test,type="response")
+
+glm.roc = suppressMessages(roc(resp.test,glm.prob))
+
+plot(glm.roc,col="red",xlim=c(1,0),ylim=c(0,1))
+
+cat("AUC for logistic regression: ",glm.roc$auc,"\n")
+
+
+
+
+```
+
+
+```{r}
+
+car::vif(glm.fit)
+
+```
+
+```{r}
+df.train = cbind(pred.train,resp.train)
+df.test = cbind(pred.test,resp.test)
+
+names(df.train)[names(df.train) == "resp.train"] <- "y"
+names(df.test)[names(df.test) == "resp.test"] <- "y"
+
+bg.outAIC= suppressMessages(bestglm(df.train,family=binomial, IC="AIC"))
+
+
+```
+
+
+
+
+```{r}
+AIC.resp.prob = predict(bg.outAIC$BestModel, newdata=df.test, type="response")
+
+AIC.resp.pred = ifelse(AIC.resp.prob>0.5,"AGN", "STARFORM")
+
+
+mcr.AIC = mean(AIC.resp.pred!=resp.test)
+mcr.AIC
+
+mean(AIC.resp.pred==resp.test)
+
+table(AIC.resp.pred, resp.test)
+
+```
+
+```{r}
+x = model.matrix(resp.train~.,pred.train)[,-1] ; y = resp.train
+out.lasso = glmnet(x,y,alpha=1,family = "binomial") 
+plot(out.lasso,xvar="lambda")
+set.seed(100)
+cv.lasso = cv.glmnet(x,y,alpha=1,family = "binomial")
+plot(cv.lasso)
+cv.lasso$lambda.min ; log(cv.lasso$lambda.min)
+
+coef(out.lasso, cv.lasso$lambda.min)
+
+x.test    = model.matrix(resp.test~.,pred.test)[,-1]
+resp.prob = predict(out.lasso,s=cv.lasso$lambda.min,newx=x.test,type="response")
+resp.pred = ifelse(resp.prob>0.5,"AGN","STARFORM")
+mean(resp.pred!=resp.test) 
+
+#lamba not really that much greater than zero, we keep redshift
+```
+
+```{r}
+out.ridge = glmnet(x,y,alpha=0,family = "binomial") 
+
+set.seed(100)
+cv.ridge = cv.glmnet(x,y,alpha=0,family = "binomial")
+
+cv.ridge$lambda.min ; log(cv.ridge$lambda.min)
+
+
+coef(out.ridge, cv.ridge$lambda.min)
+
+
+```
+## Trees
+```{r}
+rpart.out =rpart(resp.train~.,data=pred.train)
+tree.class.prob= predict(rpart.out,newdata=pred.test, type="prob")[,2] 
+roc.tree = suppressMessages(roc(resp.test,tree.class.prob))
+plot(roc.tree,col="red",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for tree: ",roc.tree$auc,"\n")
+```
+## Random Forest
+
+```{r}
+set.seed(100)
+rf.out = randomForest(resp.train~.,data=pred.train,importance=TRUE)
+resp.prob.rf = predict(rf.out,newdata=pred.test,type="prob")[,2]
+roc.rf = suppressMessages(roc(resp.test,resp.prob.rf))
+plot(roc.rf,col="red",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for random forest: ",roc.rf$auc,"\n")
+
+```
+## XGB
+
+Since `xgboost` wants integer class labels, we map "STARFORM" to 0 and "AGN" to 1.
+```{r}
+w = which(response!="STARFORM")
+response.new = rep(0,length(response))
+response.new[w] = 1
+response.int = response.new
+
+set.seed(100)
+fraction=.65
+sp = sample(nrow(predictors), round(fraction*nrow(predictors)))
+pred.train = predictors[sp ,]
+pred.test = predictors[-sp ,]
+resp.train.int = response.int[sp]
+resp.test.int = response.int[-sp]
+
+
+train = xgb.DMatrix(data=as.matrix(pred.train),label=resp.train.int)
+test = xgb.DMatrix(data=as.matrix(pred.test),label=resp.test.int)
+
+set.seed(101)
+xgb.cv.out = xgb.cv(params=list(objective="binary:logistic"),train,nrounds=30,nfold=5,verbose=0,eval_metric="error") 
+cat("The optimal number of trees is", which.min(xgb.cv.out$evaluation_log$test_error_mean))
+
+xgb.out = xgboost(train,nrounds=which.min(xgb.cv.out$evaluation_log$test_error_mean),params=list(objective="binary:logistic"),verbose=0,eval_metric="error")
+
+resp.predxg = predict(xgb.out,newdata=test,probability=TRUE)
+
+roc.xgb = suppressMessages(roc(resp.test,resp.predxg))
+
+
+plot(roc.xgb,col="red",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for xgb: ",roc.xgb$auc,"\n")
+
+
+imp.out = xgb.importance(model=xgb.out)
+imp.out
+xgb.plot.importance(importance_matrix=imp.out,col="lightblue")
+
+
+
+
+
+
+
+```
+
+
+## Naive Bayes
+```{r}
+nb.out = naiveBayes(resp.train~.,data=pred.train)
+nb.prob = predict(nb.out,newdata=pred.test,type="raw")[,2]
+roc.nb = suppressMessages(roc(resp.test,nb.prob))
+plot(roc.nb,col="red",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for naive bayes: ",roc.nb$auc,"\n")
+
+```
+
+
+## KNN
+```{r}
+
+k.max = 20
+mse.k = rep(NA,k.max) 
+for ( kk in 1:k.max ) {
+  knn.out = knn.cv(train=pred.train,cl=resp.train,k=kk,algorithm="brute")
+  mse.k[kk] = mean(knn.out != resp.train)
+}
+k.min = which.min(mse.k)
+cat("The optimal number of nearest neighbors is ",k.min,"\n")
+
+knn.out = knn(train=pred.train,test=pred.test,cl=resp.train,k=k.min,prob=TRUE, algorithm="brute")
+knn.prob = attributes(knn.out)$prob
+w = which(knn.out=="STARFORM") 
+knn.prob[w] = 1 - knn.prob[w] 
+
+roc.knn = suppressMessages(roc(resp.test,knn.prob))
+plot(roc.knn,col="red",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for knn: ",roc.knn$auc,"\n")
+
+```
+
+```{r}
+plot(roc.knn,col="red",xlim=c(1,0),ylim=c(0,1))
+plot(roc.nb,col="blue",xlim=c(1,0),ylim=c(0,1),add =TRUE)
+plot(roc.xgb,col="lightgrey",xlim=c(1,0),ylim=c(0,1),add =TRUE)
+plot(roc.tree,col="lightpink",xlim=c(1,0),ylim=c(0,1),add =TRUE)
+plot(roc.rf,col="coral2",xlim=c(1,0),ylim=c(0,1),add =TRUE)
+plot(glm.roc,col="gold2",xlim=c(1,0),ylim=c(0,1),add =TRUE)
+```
+
+```{r}
+library(knitr)
+Model = c('Logistic Regression', 'Decision Tree', 'Random Forest', 'Boosting', 'K Nearest Neighbor', 'Naive Bayes')
+AUC = c(roc.tree$auc,roc.rf$auc,roc.xgb$auc,roc.knn$auc,roc.nb$auc,glm.roc$auc)
+auctable = data.frame(Model,AUC)
+kable(auctable,"simple")
+
+```
+
+```{r}
+J = roc.xgb$sensitivities + roc.xgb$specificities - 1
+
+w = which.max(J)
+cat("Optimum threshold for xgb: ",roc.xgb$thresholds[w],"\n")
+
+
+resp.predxg = predict(xgb.out,newdata=test,probability=TRUE)
+resp.pred.xg = ifelse(resp.predxg>0.4036996 , "AGN","STARFORM")
+
+table(resp.pred.xg,resp.test)
+mean(resp.pred.xg!=resp.test)
+
+plot(roc.xgb,col="orchid2",xlim=c(1,0),ylim=c(0,1))
+cat("AUC for xgb: ",roc.xgb$auc,"\n")
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
